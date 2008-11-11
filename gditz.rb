@@ -79,7 +79,7 @@ class IssueDescDialog < Gtk::Dialog
     self.default_response = 2
 
     if issue
-      self.add_buttons(['_Updaet', 1], ['Clo_se',  2], ['_Cancel', 3])
+      self.add_buttons(['_Update Issue', 1], ['Clo_se Issue',  2], ['_Cancel', 3])
       @issue_comp.set_active(@ctx[:project].components.map{|x| x.name}.index(issue.component))
       @issue_type.set_active(Ditz::Issue::TYPE_ORDER[issue.type])
       @issue_title.set_text(issue.title)
