@@ -21,20 +21,20 @@ $opts = options do
 end
 
 begin
-  Ditz::load_plugins(".ditz-plugins")
+  Ditz::load_plugins($opts[:plugin_file])
 rescue SystemCallError => e
   Ditz::debug "can't load plugins file: #{e.message}"
 end
 
 config = begin
-  Ditz::Config.from $opts[:config_file]
+  Ditz::Config.from($opts[:config_file])
 rescue SystemCallError => e
   Ditz::Config.new()
 end
 
 issue_dir = Pathname.new(config.issue_dir || '.ditz')
 project_root = Ditz::find_dir_containing(issue_dir + Ditz::FileStorage::PROJECT_FN)
-project_root += issue_dir
+project_root += issue_dir if project_root
 
 class IssueChooseDialog < Gtk::Dialog
   def initialize(parent, issue)
@@ -52,13 +52,13 @@ class IssueChooseDialog < Gtk::Dialog
 end
 
 class IssueDescDialog < Gtk::Dialog
-  def initialize(parent, project, issue)
-    @project = project
+  def initialize(parent, ctx, issue)
+    @ctx = ctx
     name = issue ? issue.name : ''
     super("gDitz - #{name}", parent, Gtk::Dialog::MODAL)
 
     @issue_comp = Gtk::ComboBox::new()
-    @project.components.each {|a| @issue_comp.append_text(a.name)}
+    @ctx[:project].components.each {|a| @issue_comp.append_text(a.name)}
     self.vbox.pack_start(@issue_comp, true, true, 0)
 
     @issue_type = Gtk::ComboBox::new()
@@ -80,7 +80,7 @@ class IssueDescDialog < Gtk::Dialog
 
     if issue
       self.add_buttons(['_Updaet', 1], ['Clo_se',  2], ['_Cancel', 3])
-      @issue_comp.set_active(@project.components.map{|x| x.name}.index(issue.component))
+      @issue_comp.set_active(@ctx[:project].components.map{|x| x.name}.index(issue.component))
       @issue_type.set_active(Ditz::Issue::TYPE_ORDER[issue.type])
       @issue_title.set_text(issue.title)
       @issue_desc.set_text(issue.desc)
@@ -102,8 +102,8 @@ class IssueListView < Gtk::TreeView
       {:name => 'id',    :width => 100},
       {:name => 'title', :width =>  -1}
   ]
-  def initialize(parent, project)
-    @project = project
+  def initialize(parent, ctx)
+    @ctx = ctx
     @model = Gtk::ListStore.new(String, String)
     super @model
     crtest = Gtk::CellRendererText.new()
@@ -116,8 +116,8 @@ class IssueListView < Gtk::TreeView
     self.signal_connect "row-activated" do
       path = self.selection.selected_rows()[0]
       iter = @model.get_iter(path)
-      issue = (project.issues.select { |i| i.name == iter[0] }).first
-      descdialog = IssueDescDialog.new(parent, @project, issue)
+      issue = (@ctx[:project].issues.select { |i| i.name == iter[0] }).first
+      descdialog = IssueDescDialog.new(parent, @ctx, issue)
       descdialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
       descdialog.show_all()
       descdialog.run() do |response|
@@ -129,12 +129,13 @@ class IssueListView < Gtk::TreeView
             issue.changed!
             self.update()
           when 2
-            closedialog = IssueChooseDialog.new(descdialog, issue)
-            closedialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
-            closedialog.show_all()
-            issue.close(closedialog.issue_disp, 'mattn!', 'test!') if closedialog.run() == 1
+            choosedialog = IssueChooseDialog.new(descdialog, issue)
+            choosedialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
+            choosedialog.show_all()
+            who = "#{@ctx[:config].name} <#{@ctx[:config].email}"
+            issue.close(choosedialog.issue_disp, who, '') if choosedialog.run() == 1
             issue.changed!
-            closedialog.destroy()
+            choosedialog.destroy()
             self.update()
         end
       end
@@ -144,26 +145,31 @@ class IssueListView < Gtk::TreeView
 
   def update()
     @model.clear()
-    @project.unassigned_issues().each do |issue|
-      iter = @model.append()
-      iter[0] = issue.name
-      iter[1] = issue.title
+    releases ||= @ctx[:project].unreleased_releases + [:unassigned]
+    releases = [*releases]
+    releases.each do |r|
+      issues = @ctx[:project].issues_for_release r
+      issues = issues.select { |i| i.open? } unless @ctx[:option][:all]
+
+      issues.each do |issue|
+        iter = @model.append()
+        iter[0] = issue.name
+        iter[1] = issue.title
+      end
     end
   end
 end
 
 class IssueListWindow < Gtk::Window
-  def initialize(config, project, storage)
-    @config = config
-    @project = project
-    @storage = storage
+  def initialize(ctx)
+    @ctx = ctx
     super()
     self.set_title('gDitz')
     self.set_default_size(400, 300)
     self.signal_connect "destroy" do
-      changed_issues = @project.issues.select { |i| i.changed? }
+      changed_issues = @ctx[:project].issues.select { |i| i.changed? }
       unless changed_issues.empty?
-        @storage.save @project
+        @ctx[:storage].save @ctx[:project]
       end
       Gtk.main_quit()
     end
@@ -171,7 +177,7 @@ class IssueListWindow < Gtk::Window
     vbox = Gtk::VBox.new(false, 6)
     swin = Gtk::ScrolledWindow.new()
     swin.set_policy Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC
-    ilist = IssueListView.new(self, @project)
+    ilist = IssueListView.new(self, @ctx)
     ilist.update()
     swin.add(ilist)
     vbox.pack_start(swin, true, true, 0)
@@ -181,24 +187,24 @@ class IssueListWindow < Gtk::Window
     add_issue = Gtk::Button::new()
     add_issue.set_label('_Add Issue')
     add_issue.signal_connect('clicked') do |add_issue|
-      descdialog = IssueDescDialog.new(self, @project, nil)
+      descdialog = IssueDescDialog.new(self, @ctx, nil)
       descdialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
       descdialog.show_all()
       descdialog.run() do |response|
         case response
           when 1
-            issue = Ditz::Issue::create([@config, @project],
+            issue = Ditz::Issue::create([@ctx[:config], @ctx[:project]],
               :title => descdialog.issue_title,
               :desc => descdialog.issue_desc,
               :type => descdialog.issue_type,
-              :component => @project.components.name,
-              :reporter => "hehehe <your@example.com>",
+              :component => @ctx[:project].components.name,
+              :reporter => "#{@ctx[:config].name} <#{@ctx[:config].email}",
               :status => :unstarted,
               :create_time => Time.now
             )
-            issue.project = @project
-            @project.add_issue(issue)
-            @storage.save(@project)
+            issue.project = @ctx[:project]
+            @ctx[:project].add_issue(issue)
+            @ctx[:storage].save(@ctx[:project])
         end
       end
       descdialog.destroy()
@@ -230,8 +236,12 @@ project = begin
 rescue SystemCallError, Ditz::Project::Error => e
   die "#{e.message} (use 'init' to initialize)"
 end
-p config
 
-win = IssueListWindow.new(config, project, storage)
+win = IssueListWindow.new({
+  :config  => config,
+  :project => project,
+  :storage => storage,
+  :option  => $opts
+})
 win.show_all()
 Gtk.main()
