@@ -36,6 +36,7 @@ issue_dir = Pathname.new(config.issue_dir || '.ditz')
 project_root = Ditz::find_dir_containing(issue_dir + Ditz::FileStorage::PROJECT_FN)
 project_root += issue_dir if project_root
 
+## IssueChooseDialog : choose disposition type
 class IssueChooseDialog < Gtk::Dialog
   def initialize(parent, issue)
     super("gDitz - #{issue.name}", parent, Gtk::Dialog::MODAL,
@@ -51,6 +52,7 @@ class IssueChooseDialog < Gtk::Dialog
   def issue_disp; Ditz::Issue::DISPOSITION_STRINGS.index(@issue_disp.active_text) end
 end
 
+## IssueDescDialog : edit issue description
 class IssueDescDialog < Gtk::Dialog
   def initialize(parent, ctx, issue)
     @ctx = ctx
@@ -97,12 +99,14 @@ class IssueDescDialog < Gtk::Dialog
   def issue_desc; @issue_desc.get_text() end
 end
 
+## IssueListView : list view control for issues
 class IssueListView < Gtk::TreeView
   COLUMNS = [
       {:name => 'id',    :width => 100},
       {:name => 'title', :width =>  -1}
   ]
   def initialize(parent, ctx)
+    @parent = parent
     @ctx = ctx
     @model = Gtk::ListStore.new(String, String)
     super @model
@@ -117,34 +121,38 @@ class IssueListView < Gtk::TreeView
       path = self.selection.selected_rows()[0]
       iter = @model.get_iter(path)
       issue = (@ctx[:project].issues.select { |i| i.name == iter[0] }).first
-      descdialog = IssueDescDialog.new(parent, @ctx, issue)
-      descdialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
-      descdialog.show_all()
-      descdialog.run() do |response|
-        case response
-          when 1
-            issue.type = descdialog.issue_type
-            issue.title = descdialog.issue_title
-            issue.desc = descdialog.issue_desc
-            issue.changed!
-            @ctx[:storage].save(@ctx[:project])
-            self.update()
-          when 2
-            choosedialog = IssueChooseDialog.new(descdialog, issue)
-            choosedialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
-            choosedialog.show_all()
-            who = "#{@ctx[:config].name} <#{@ctx[:config].email}"
-            issue.close(choosedialog.issue_disp, who, '') if choosedialog.run() == 1
-            issue.changed!
-            @ctx[:storage].save(@ctx[:project])
-            self.update()
-        end
-      end
-      descdialog.destroy()
+      self.edit_issue(issue)
     end
   end
 
-  def update()
+  def edit_issue(issue)
+    descdialog = IssueDescDialog.new(@parent, @ctx, issue)
+    descdialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
+    descdialog.show_all()
+    descdialog.run() do |response|
+      case response
+        when 1
+          issue.type = descdialog.issue_type
+          issue.title = descdialog.issue_title
+          issue.desc = descdialog.issue_desc
+          issue.changed!
+          @ctx[:storage].save(@ctx[:project])
+          self.update_issues()
+        when 2
+          choosedialog = IssueChooseDialog.new(descdialog, issue)
+          choosedialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
+          choosedialog.show_all()
+          who = "#{@ctx[:config].name} <#{@ctx[:config].email}"
+          issue.close(choosedialog.issue_disp, who, '') if choosedialog.run() == 1
+          issue.changed!
+          @ctx[:storage].save(@ctx[:project])
+          self.update_issues()
+      end
+    end
+    descdialog.destroy()
+  end
+
+  def update_issues()
     @model.clear()
     releases ||= @ctx[:project].unreleased_releases + [:unassigned]
     releases = [*releases]
@@ -161,6 +169,7 @@ class IssueListView < Gtk::TreeView
   end
 end
 
+## IssueListWindow : main window
 class IssueListWindow < Gtk::Window
   def initialize(ctx)
     @ctx = ctx
@@ -175,45 +184,22 @@ class IssueListWindow < Gtk::Window
     vbox = Gtk::VBox.new(false, 6)
     swin = Gtk::ScrolledWindow.new()
     swin.set_policy Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC
-    ilist = IssueListView.new(self, @ctx)
-    ilist.update()
-    swin.add(ilist)
+    @ilist = IssueListView.new(self, @ctx)
+    @ilist.update_issues()
+    swin.add(@ilist)
     vbox.pack_start(swin, true, true, 0)
 
     hbox = Gtk::HBox.new(false, 6)
 
     add_issue = Gtk::Button::new()
     add_issue.set_label('_Add Issue')
-    add_issue.signal_connect('clicked') do |add_issue|
-      descdialog = IssueDescDialog.new(self, @ctx, nil)
-      descdialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
-      descdialog.show_all()
-      descdialog.run() do |response|
-        case response
-          when 1
-            issue = Ditz::Issue::create([@ctx[:config], @ctx[:project]],
-              :title => descdialog.issue_title,
-              :desc => descdialog.issue_desc,
-              :type => descdialog.issue_type,
-              :component => @ctx[:project].components.name,
-              :reporter => "#{@ctx[:config].name} <#{@ctx[:config].email}",
-              :status => :unstarted,
-              :create_time => Time.now
-            )
-            issue.project = @ctx[:project]
-            @ctx[:project].add_issue(issue)
-            @ctx[:storage].save(@ctx[:project])
-        end
-      end
-      descdialog.destroy()
-      ilist.update()
-    end
+    add_issue.signal_connect('clicked') do |add_issue| self.create_issue() end
     add_issue.use_underline = true
     hbox.add(add_issue)
 
     refresh = Gtk::Button::new()
     refresh.set_label('_Refresh')
-    refresh.signal_connect('clicked') do |refresh| ilist.update() end
+    refresh.signal_connect('clicked') do |refresh| @ilist.update_issues() end
     refresh.use_underline = true
     hbox.add(refresh)
 
@@ -225,6 +211,31 @@ class IssueListWindow < Gtk::Window
 
     vbox.pack_start(hbox, false, false, 0)
     self.add(vbox)
+  end
+
+  def create_issue()
+    descdialog = IssueDescDialog.new(self, @ctx, nil)
+    descdialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
+    descdialog.show_all()
+    descdialog.run() do |response|
+      case response
+        when 1
+          issue = Ditz::Issue::create([@ctx[:config], @ctx[:project]],
+            :title => descdialog.issue_title,
+            :desc => descdialog.issue_desc,
+            :type => descdialog.issue_type,
+            :component => @ctx[:project].components.name,
+            :reporter => "#{@ctx[:config].name} <#{@ctx[:config].email}",
+            :status => :unstarted,
+            :create_time => Time.now
+          )
+          issue.project = @ctx[:project]
+          @ctx[:project].add_issue(issue)
+          @ctx[:storage].save(@ctx[:project])
+      end
+    end
+    descdialog.destroy()
+    @ilist.update_issues()
   end
 
   def save_if_changed()
