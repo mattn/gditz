@@ -214,7 +214,7 @@ class IssueListWindow < Gtk::Window
     hbox.add(add_issue)
 
     refresh = Gtk::Button::new()
-    refresh.set_label('_Fefresh')
+    refresh.set_label('_Refresh')
     refresh.signal_connect('clicked') do |refresh| ilist.update() end
     refresh.use_underline = true
     hbox.add(refresh)
