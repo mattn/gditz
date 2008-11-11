@@ -127,6 +127,7 @@ class IssueListView < Gtk::TreeView
             issue.title = descdialog.issue_title
             issue.desc = descdialog.issue_desc
             issue.changed!
+            @ctx[:storage].save(@ctx[:project])
             self.update()
           when 2
             choosedialog = IssueChooseDialog.new(descdialog, issue)
@@ -135,7 +136,7 @@ class IssueListView < Gtk::TreeView
             who = "#{@ctx[:config].name} <#{@ctx[:config].email}"
             issue.close(choosedialog.issue_disp, who, '') if choosedialog.run() == 1
             issue.changed!
-            choosedialog.destroy()
+            @ctx[:storage].save(@ctx[:project])
             self.update()
         end
       end
@@ -167,10 +168,7 @@ class IssueListWindow < Gtk::Window
     self.set_title('gDitz')
     self.set_default_size(400, 300)
     self.signal_connect "destroy" do
-      changed_issues = @ctx[:project].issues.select { |i| i.changed? }
-      unless changed_issues.empty?
-        @ctx[:storage].save @ctx[:project]
-      end
+      self.save_if_changed()
       Gtk.main_quit()
     end
 
@@ -227,6 +225,13 @@ class IssueListWindow < Gtk::Window
 
     vbox.pack_start(hbox, false, false, 0)
     self.add(vbox)
+  end
+
+  def save_if_changed()
+    changed_issues = @ctx[:project].issues.select { |i| i.changed? }
+    unless changed_issues.empty?
+      @ctx[:storage].save @ctx[:project]
+    end
   end
 end
 
