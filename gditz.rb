@@ -6,13 +6,13 @@ require 'ditz'
 
 CONFIG_FN = ".ditz-config"
 PLUGIN_FN = ".ditz-plugins"
-VERSION = "0.1"
+GDITZ_VERSION = "0.1"
 
 config_dir = Ditz::find_dir_containing CONFIG_FN
 plugin_dir = Ditz::find_dir_containing PLUGIN_FN
 
 $opts = options do
-  version "gditz #{VERSION}"
+  version "gditz #{GDITZ_VERSION}"
   opt :issue_dir, "Issue database dir", :default => ".ditz"
   opt :config_file, "Configuration file", :default => File.join(config_dir || ".", CONFIG_FN)
   opt :plugins_file, "Plugins file", :default => File.join(plugin_dir || ".", PLUGIN_FN)
@@ -33,10 +33,10 @@ rescue SystemCallError => e
   Ditz::Config.new()
 end
 
-config.issue_dir = $opts[:issue_dir] if $opts[:issue_dir]
+config.issue_dir = $opts[:issue_dir] if $opts[:issue_dir] != config.issue_dir
 issue_dir = Pathname.new(config.issue_dir)
 project_root = Ditz::find_dir_containing(issue_dir + Ditz::FileStorage::PROJECT_FN)
-die "No #{issue_dir} directory---use 'ditz init' to initialize" unless $project_root
+die "No #{issue_dir} directory---use 'ditz init' to initialize" unless project_root
 project_root += issue_dir
 
 ## IssueChooseDialog : choose disposition type
