@@ -1,0 +1,14 @@
+gditz : ditz gui frontend
+
+What?
+	ditz gui frontend
+
+Require
+	ruby gtk2 module.
+
+License
+	GPL v2
+
+Author
+	mattn
+
