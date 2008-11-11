@@ -39,6 +39,25 @@ project_root = Ditz::find_dir_containing(issue_dir + Ditz::FileStorage::PROJECT_
 die "No #{issue_dir} directory---use 'ditz init' to initialize" unless project_root
 project_root += issue_dir
 
+class StockButton < Gtk::Button
+  def initialize(text = nil, stock = nil, textalign = :horiz)
+    super()
+    align = Gtk::Alignment.new(0.5, 0.5, 0, 0)
+    add align
+    textalign == :horiz ? box = Gtk::HBox.new(false, 0) : box = Gtk::VBox.new(false, 0)
+    align.add box
+    @widget_image = Gtk::Image.new(stock, Gtk::IconSize::BUTTON)
+    box.pack_start(@widget_image, false, false, 2)
+    @widget_label = Gtk::Label.new(text)
+    @widget_label.use_underline = true
+    @widget_label.show
+    box.pack_start(@widget_label, false, false, 2)
+  end
+private
+  @widget_image
+  @widget_label
+end
+
 ## IssueChooseDialog : choose disposition type
 class IssueChooseDialog < Gtk::Dialog
   def initialize(parent, issue)
@@ -58,9 +77,10 @@ end
 ## IssueDescDialog : edit issue description
 class IssueDescDialog < Gtk::Dialog
   def initialize(parent, ctx, issue)
+    @parent = parent
     @ctx = ctx
     name = issue ? issue.name : ''
-    super("gDitz - #{name}", parent, Gtk::Dialog::MODAL)
+    super("gDitz - #{name}", @parent, Gtk::Dialog::MODAL)
 
     @issue_comp = Gtk::ComboBox::new()
     @ctx[:project].components.each {|a| @issue_comp.append_text(a.name)}
@@ -84,13 +104,16 @@ class IssueDescDialog < Gtk::Dialog
     self.default_response = 2
 
     if issue
-      self.add_buttons(['_Update Issue', 1], ['Clo_se Issue',  2], ['_Cancel', 3])
+      self.add_action_widget(StockButton::new('_Update Issue', Gtk::Stock::SAVE), 1)
+      self.add_action_widget(StockButton::new('Clo_se Issue', Gtk::Stock::CLOSE), 2)
+      self.add_action_widget(StockButton::new('_Cancel', Gtk::Stock::CANCEL), 3)
       @issue_comp.set_active(@ctx[:project].components.map{|x| x.name}.index(issue.component))
       @issue_type.set_active(Ditz::Issue::TYPE_ORDER[issue.type])
       @issue_title.set_text(issue.title)
       @issue_desc.set_text(issue.desc)
     else
-      self.add_buttons(['_Add', 1], ['_Cancel', 2])
+      self.add_action_widget(StockButton::new('_Update Issue', Gtk::Stock::SAVE), 1)
+      self.add_action_widget(StockButton::new('_Cancel', Gtk::Stock::CANCEL), 3)
       @issue_comp.set_active(0)
       @issue_type.set_active(0)
     end
@@ -100,6 +123,10 @@ class IssueDescDialog < Gtk::Dialog
   def issue_type; Ditz::Issue::TYPE_ORDER.index(@issue_type.active) end
   def issue_title; @issue_title.text end
   def issue_desc; @issue_desc.get_text() end
+
+private
+  @ctx
+  @parent
 end
 
 ## IssueListView : list view control for issues
@@ -146,8 +173,11 @@ class IssueListView < Gtk::TreeView
           choosedialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
           choosedialog.show_all()
           who = "#{@ctx[:config].name} <#{@ctx[:config].email}"
-          issue.close(choosedialog.issue_disp, who, '') if choosedialog.run() == 1
-          issue.changed!
+          if choosedialog.run() == 1
+            issue.close(choosedialog.issue_disp, who, '') if choosedialog.run() == 1
+            issue.changed!
+          end
+          choosedialog.destroy()
           @ctx[:storage].save(@ctx[:project])
           self.update_issues()
       end
@@ -170,6 +200,11 @@ class IssueListView < Gtk::TreeView
       end
     end
   end
+
+private
+  @ctx
+  @model
+  @parent
 end
 
 ## IssueListWindow : main window
@@ -194,23 +229,17 @@ class IssueListWindow < Gtk::Window
 
     hbox = Gtk::HBox.new(false, 6)
 
-    add_issue = Gtk::Button::new()
-    add_issue.set_label('_Add Issue')
+    add_issue = StockButton.new('_Add Issue', Gtk::Stock::EDIT)
     add_issue.signal_connect('clicked') do |add_issue| self.create_issue() end
-    add_issue.use_underline = true
     hbox.add(add_issue)
 
-    refresh = Gtk::Button::new()
-    refresh.set_label('_Refresh')
+    refresh = StockButton::new('_Refresh', Gtk::Stock::REFRESH)
     refresh.signal_connect('clicked') do |refresh| @ilist.update_issues() end
-    refresh.use_underline = true
     hbox.add(refresh)
 
-    finish = Gtk::Button::new()
-    finish.set_label('_Finish')
-    finish.signal_connect('clicked') do |finish| self.destroy() end
-    finish.use_underline = true
-    hbox.add(finish)
+    quit = StockButton::new('_Quit', Gtk::Stock::QUIT)
+    quit.signal_connect('clicked') do |quit| self.destroy() end
+    hbox.add(quit)
 
     vbox.pack_start(hbox, false, false, 0)
     self.add(vbox)
@@ -247,6 +276,10 @@ class IssueListWindow < Gtk::Window
       @ctx[:storage].save @ctx[:project]
     end
   end
+
+private
+  @ctx
+  @ilist
 end
 
 storage = Ditz::FileStorage.new(project_root)
