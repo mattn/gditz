@@ -1,12 +1,36 @@
 require 'gtk2'
-require 'ditz'
 require 'pathname'
+require 'trollop'; include Trollop
+require 'ditz'
 
+CONFIG_FN = ".ditz-config"
+PLUGIN_FN = ".ditz-plugins"
+
+config_dir = Ditz::find_dir_containing CONFIG_FN
+plugin_dir = Ditz::find_dir_containing PLUGIN_FN
+
+$opts = options do
+  version "ditz #{Ditz::VERSION}"
+  opt :issue_dir, "Issue database dir", :default => "bugs"
+  opt :config_file, "Configuration file", :default => File.join(config_dir || ".", CONFIG_FN)
+  opt :plugins_file, "Plugins file", :default => File.join(plugin_dir || ".", PLUGIN_FN)
+  opt :verbose, "Verbose output", :default => false
+  opt :list_hooks, "List all hooks and descriptions, and quit.", :short => 'l', :default => false
+  stop_on_unknown
+end
+
+$verbose = true if $opts[:verbose]
 $config = begin
-  Ditz::Config.from(".ditz-config")
+  Ditz::Config.from $opts[:config_file]
 rescue SystemCallError => e
   Ditz::Config.new()
 end
+begin
+  Ditz::load_plugins(".ditz-plugins")
+rescue SystemCallError => e
+  Ditz::debug "can't load plugins file: #{e.message}"
+end
+
 issue_dir = Pathname.new($config.issue_dir || '.ditz')
 project_root = Ditz::find_dir_containing(issue_dir + Ditz::FileStorage::PROJECT_FN)
 project_root += issue_dir
