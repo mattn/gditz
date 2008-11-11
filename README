@@ -1,7 +1,7 @@
 gditz : ditz gui frontend
 
 What?
-	ditz gui frontend
+	ditz gui frontend written in GTK.
 
 Require
 	ruby gtk2 module.
