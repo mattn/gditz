@@ -20,15 +20,16 @@ $opts = options do
   stop_on_unknown
 end
 
-config = begin
-  Ditz::Config.from $opts[:config_file]
-rescue SystemCallError => e
-  Ditz::Config.new()
-end
 begin
   Ditz::load_plugins(".ditz-plugins")
 rescue SystemCallError => e
   Ditz::debug "can't load plugins file: #{e.message}"
+end
+
+config = begin
+  Ditz::Config.from $opts[:config_file]
+rescue SystemCallError => e
+  Ditz::Config.new()
 end
 
 issue_dir = Pathname.new(config.issue_dir || '.ditz')
@@ -52,7 +53,7 @@ end
 
 class IssueDescDialog < Gtk::Dialog
   def initialize(parent, project, issue)
-	@project = project
+    @project = project
     name = issue ? issue.name : ''
     super("gDitz - #{name}", parent, Gtk::Dialog::MODAL)
 
@@ -77,14 +78,14 @@ class IssueDescDialog < Gtk::Dialog
     self.vbox.pack_end(scroll, false, false, 0)
     self.default_response = 2
 
-	if issue
-	  self.add_buttons(['_Updaet', 1], ['Clo_se',  2], ['_Cancel', 3])
+    if issue
+      self.add_buttons(['_Updaet', 1], ['Clo_se',  2], ['_Cancel', 3])
       @issue_comp.set_active(@project.components.map{|x| x.name}.index(issue.component))
       @issue_type.set_active(Ditz::Issue::TYPE_ORDER[issue.type])
       @issue_title.set_text(issue.title)
       @issue_desc.set_text(issue.desc)
     else
-	  self.add_buttons(['_Add', 1], ['_Cancel', 2])
+      self.add_buttons(['_Add', 1], ['_Cancel', 2])
       @issue_comp.set_active(0)
       @issue_type.set_active(0)
     end
@@ -102,7 +103,7 @@ class IssueListView < Gtk::TreeView
       {:name => 'title', :width =>  -1}
   ]
   def initialize(parent, project)
-	@project = project
+    @project = project
     @model = Gtk::ListStore.new(String, String)
     super @model
     crtest = Gtk::CellRendererText.new()
@@ -128,12 +129,12 @@ class IssueListView < Gtk::TreeView
             issue.changed!
             self.update()
           when 2
-			closedialog = IssueChooseDialog.new(descdialog, issue)
+            closedialog = IssueChooseDialog.new(descdialog, issue)
             closedialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
             closedialog.show_all()
             issue.close(closedialog.issue_disp, 'mattn!', 'test!') if closedialog.run() == 1
-			issue.changed!
-			closedialog.destroy()
+            issue.changed!
+            closedialog.destroy()
             self.update()
         end
       end
@@ -153,9 +154,9 @@ end
 
 class IssueListWindow < Gtk::Window
   def initialize(config, project, storage)
-	@config = config
-	@project = project
-	@storage = storage
+    @config = config
+    @project = project
+    @storage = storage
     super()
     self.set_title('gDitz')
     self.set_default_size(400, 300)
@@ -167,7 +168,7 @@ class IssueListWindow < Gtk::Window
       Gtk.main_quit()
     end
 
-	vbox = Gtk::VBox.new(false, 6)
+    vbox = Gtk::VBox.new(false, 6)
     swin = Gtk::ScrolledWindow.new()
     swin.set_policy Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC
     ilist = IssueListView.new(self, @project)
@@ -175,11 +176,11 @@ class IssueListWindow < Gtk::Window
     swin.add(ilist)
     vbox.pack_start(swin, true, true, 0)
 
-	hbox = Gtk::HBox.new(false, 6)
+    hbox = Gtk::HBox.new(false, 6)
 
-	add_issue = Gtk::Button::new()
-	add_issue.set_label('_Add Issue')
-	add_issue.signal_connect('clicked') do |add_issue|
+    add_issue = Gtk::Button::new()
+    add_issue.set_label('_Add Issue')
+    add_issue.signal_connect('clicked') do |add_issue|
       descdialog = IssueDescDialog.new(self, @project, nil)
       descdialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
       descdialog.show_all()
@@ -195,7 +196,7 @@ class IssueListWindow < Gtk::Window
               :status => :unstarted,
               :create_time => Time.now
             )
-	        issue.project = @project
+            issue.project = @project
             @project.add_issue(issue)
             @storage.save(@project)
         end
@@ -203,19 +204,19 @@ class IssueListWindow < Gtk::Window
       descdialog.destroy()
       ilist.update()
     end
-	add_issue.use_underline = true
+    add_issue.use_underline = true
     hbox.add(add_issue)
 
-	refresh = Gtk::Button::new()
-	refresh.set_label('_Fefresh')
-	refresh.signal_connect('clicked') do |refresh| ilist.update() end
-	refresh.use_underline = true
+    refresh = Gtk::Button::new()
+    refresh.set_label('_Fefresh')
+    refresh.signal_connect('clicked') do |refresh| ilist.update() end
+    refresh.use_underline = true
     hbox.add(refresh)
 
-	finish = Gtk::Button::new()
-	finish.set_label('_Finish')
-	finish.signal_connect('clicked') do |finish| self.destroy() end
-	finish.use_underline = true
+    finish = Gtk::Button::new()
+    finish.set_label('_Finish')
+    finish.signal_connect('clicked') do |finish| self.destroy() end
+    finish.use_underline = true
     hbox.add(finish)
 
     vbox.pack_start(hbox, false, false, 0)
@@ -229,6 +230,7 @@ project = begin
 rescue SystemCallError, Ditz::Project::Error => e
   die "#{e.message} (use 'init' to initialize)"
 end
+p config
 
 win = IssueListWindow.new(config, project, storage)
 win.show_all()
