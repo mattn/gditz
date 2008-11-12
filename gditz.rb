@@ -58,20 +58,43 @@ private
   @widget_label
 end
 
+class LabeledFrame < Gtk::Frame
+  def initialize(widget, text = nil, textalign = :horiz)
+    super(text)
+    textalign == :horiz ? box = Gtk::HBox.new(false, 0) : box = Gtk::VBox.new(false, 0)
+    box.add(widget)
+    box.border_width = 5
+    self.add(box)
+  end
+end
+
 ## IssueChooseDialog : choose disposition type
 class IssueChooseDialog < Gtk::Dialog
-  def initialize(parent, issue)
+  def initialize(parent, ctx, issue)
+    @parent = parent
+    @ctx = ctx
     super("gDitz - #{issue.name}", parent, Gtk::Dialog::MODAL,
         ['_OK', 1],
         ['_Cancel', 2]
     )
     @issue_disp = Gtk::ComboBox::new()
-    Ditz::Issue::DISPOSITION_STRINGS.each {|a| @issue_disp.append_text(a[1].to_s)}
+    Ditz::Issue::DISPOSITIONS.each {|a|
+        @issue_disp.append_text((Ditz::Issue::DISPOSITION_STRINGS[a] || a).to_s)
+    }
     @issue_disp.set_active(0)
-    self.vbox.pack_start(@issue_disp, true, true, 0)
+    self.vbox.add(LabeledFrame.new(@issue_disp, 'Disposition'))
+
+    @issue_who = Gtk::Entry::new()
+    @issue_who.set_text("#{@ctx[:config].name} <#{@ctx[:config].email}>")
+    self.vbox.add(LabeledFrame.new(@issue_who, 'Who'))
   end
 
   def issue_disp; Ditz::Issue::DISPOSITION_STRINGS.index(@issue_disp.active_text) end
+  def issue_who; @issue_who.text end
+
+private
+  @ctx
+  @parent
 end
 
 ## IssueDescDialog : edit issue description
@@ -84,14 +107,14 @@ class IssueDescDialog < Gtk::Dialog
 
     @issue_comp = Gtk::ComboBox::new()
     @ctx[:project].components.each {|a| @issue_comp.append_text(a.name)}
-    self.vbox.pack_start(@issue_comp, true, true, 0)
+    self.vbox.add(LabeledFrame.new(@issue_comp, 'Component'))
 
     @issue_type = Gtk::ComboBox::new()
-    ['bugfix', 'feature', 'task'].each {|a| @issue_type.append_text(a)}
-    self.vbox.pack_start(@issue_type, true, true, 0)
+    Ditz::Issue::TYPES.each {|a| @issue_type.append_text(a.to_s)}
+    self.vbox.add(LabeledFrame.new(@issue_type, 'Type'))
 
     @issue_title = Gtk::Entry::new()
-    self.vbox.add(@issue_title)
+    self.vbox.add(LabeledFrame.new(@issue_title, 'Title'))
 
     textview = Gtk::TextView::new()
     @issue_desc = textview.buffer()
@@ -100,7 +123,7 @@ class IssueDescDialog < Gtk::Dialog
     scroll.set_policy(Gtk::POLICY_AUTOMATIC, Gtk::POLICY_AUTOMATIC)
     scroll.set_shadow_type(Gtk::SHADOW_IN)
     scroll.add(textview)
-    self.vbox.pack_end(scroll, false, false, 0)
+    self.vbox.add(LabeledFrame.new(scroll, 'Description'))
     self.default_response = 2
 
     if issue
@@ -169,12 +192,11 @@ class IssueListView < Gtk::TreeView
           @ctx[:storage].save(@ctx[:project])
           self.update_issues()
         when 2
-          choosedialog = IssueChooseDialog.new(descdialog, issue)
+          choosedialog = IssueChooseDialog.new(descdialog, @ctx, issue)
           choosedialog.window_position = Gtk::Window::POS_CENTER_ON_PARENT
           choosedialog.show_all()
-          who = "#{@ctx[:config].name} <#{@ctx[:config].email}"
           if choosedialog.run() == 1
-            issue.close(choosedialog.issue_disp, who, '') if choosedialog.run() == 1
+            issue.close(choosedialog.issue_disp, choosedialog.issue_who, '') if choosedialog.run() == 1
             issue.changed!
           end
           choosedialog.destroy()
@@ -257,7 +279,7 @@ class IssueListWindow < Gtk::Window
             :desc => descdialog.issue_desc,
             :type => descdialog.issue_type,
             :component => @ctx[:project].components.name,
-            :reporter => "#{@ctx[:config].name} <#{@ctx[:config].email}",
+            :reporter => "#{@ctx[:config].name} <#{@ctx[:config].email}>",
             :status => :unstarted,
             :create_time => Time.now
           )
